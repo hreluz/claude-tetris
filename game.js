@@ -17,6 +17,9 @@ const COLORS = [
   '#ffeb3b', // lightning - electric yellow
   '#26a69a', // gravity - teal
   '#b3e5fc', // freeze - ice blue
+  '#d4e157', // plus pentomino - lime
+  '#8d6e63', // U-pentomino - brown
+  '#f06292', // Y-pentomino - pink
 ];
 
 const PIECES = [
@@ -32,6 +35,9 @@ const PIECES = [
   [[9]],                                       // lightning
   [[10]],                                      // gravity
   [[11]],                                      // freeze
+  [[0,12,0],[12,12,12],[0,12,0]],             // plus/X-pentomino
+  [[13,0,13],[13,13,13]],                     // U-pentomino
+  [[0,14],[14,14],[0,14],[0,14]],             // Y-pentomino
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
@@ -45,6 +51,12 @@ const FALL_DURATION = 900;
 const FREEZE_TYPE = 11;
 const FREEZE_CHANCE = 0.03;
 const FREEZE_DURATION = 5000;
+const PLUS_TYPE = 12;
+const PLUS_CHANCE = 0.015;
+const U_TYPE = 13;
+const U_CHANCE = 0.015;
+const Y_TYPE = 14;
+const Y_CHANCE = 0.015;
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
@@ -98,6 +110,12 @@ function randomPiece() {
     type = GRAVITY_TYPE;
   } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE + GRAVITY_CHANCE + FREEZE_CHANCE) {
     type = FREEZE_TYPE;
+  } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE + GRAVITY_CHANCE + FREEZE_CHANCE + PLUS_CHANCE) {
+    type = PLUS_TYPE;
+  } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE + GRAVITY_CHANCE + FREEZE_CHANCE + PLUS_CHANCE + U_CHANCE) {
+    type = U_TYPE;
+  } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE + GRAVITY_CHANCE + FREEZE_CHANCE + PLUS_CHANCE + U_CHANCE + Y_CHANCE) {
+    type = Y_TYPE;
   } else {
     type = Math.floor(Math.random() * 7) + 1;
   }
