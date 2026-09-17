@@ -13,6 +13,10 @@ const COLORS = [
   '#e57373', // Z - red
   '#64b5f6', // J - blue
   '#ffb74d', // L - orange
+  '#f4511e', // bomb - deep orange
+  '#ffeb3b', // lightning - electric yellow
+  '#26a69a', // gravity - teal
+  '#b3e5fc', // freeze - ice blue
 ];
 
 const PIECES = [
@@ -24,9 +28,23 @@ const PIECES = [
   [[5,5,0],[0,5,5],[0,0,0]],                  // Z
   [[6,0,0],[6,6,6],[0,0,0]],                  // J
   [[0,0,7],[7,7,7],[0,0,0]],                  // L
+  [[8]],                                       // bomb
+  [[9]],                                       // lightning
+  [[10]],                                      // gravity
+  [[11]],                                      // freeze
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
+const BOMB_TYPE = 8;
+const BOMB_CHANCE = 0.05;
+const LIGHTNING_TYPE = 9;
+const LIGHTNING_CHANCE = 0.03;
+const GRAVITY_TYPE = 10;
+const GRAVITY_CHANCE = 0.03;
+const FALL_DURATION = 900;
+const FREEZE_TYPE = 11;
+const FREEZE_CHANCE = 0.03;
+const FREEZE_DURATION = 5000;
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
@@ -41,7 +59,7 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, explosionFlash, fallAnimation, animating, freezeUntil;
 
 const THEME_KEY = 'tetris-theme';
 
@@ -70,7 +88,19 @@ function createBoard() {
 }
 
 function randomPiece() {
-  const type = Math.floor(Math.random() * 7) + 1;
+  const roll = Math.random();
+  let type;
+  if (roll < BOMB_CHANCE) {
+    type = BOMB_TYPE;
+  } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE) {
+    type = LIGHTNING_TYPE;
+  } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE + GRAVITY_CHANCE) {
+    type = GRAVITY_TYPE;
+  } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE + GRAVITY_CHANCE + FREEZE_CHANCE) {
+    type = FREEZE_TYPE;
+  } else {
+    type = Math.floor(Math.random() * 7) + 1;
+  }
   const shape = PIECES[type].map(row => [...row]);
   return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
 }
@@ -116,6 +146,55 @@ function merge() {
         board[current.y + r][current.x + c] = current.shape[r][c];
 }
 
+function explode(cx, cy) {
+  for (let r = cy - 1; r <= cy + 1; r++) {
+    for (let c = cx - 1; c <= cx + 1; c++) {
+      if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+      board[r][c] = 0;
+    }
+  }
+  explosionFlash = { cx, cy, start: performance.now() };
+}
+
+function strikeRow(y) {
+  board.splice(y, 1);
+  board.unshift(new Array(COLS).fill(0));
+  lines += 1;
+  score += (LINE_SCORES[1] || 0) * level;
+  level = Math.floor(lines / 10) + 1;
+  dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+  updateHUD();
+}
+
+function computeCompactMoves() {
+  const newBoard = createBoard();
+  const moves = [];
+  for (let c = 0; c < COLS; c++) {
+    const filled = [];
+    for (let r = 0; r < ROWS; r++) {
+      if (board[r][c] !== 0) filled.push({ from: r, color: board[r][c] });
+    }
+    const startRow = ROWS - filled.length;
+    filled.forEach((f, i) => {
+      const to = startRow + i;
+      newBoard[to][c] = f.color;
+      if (f.from !== to) moves.push({ col: c, from: f.from, to, color: f.color });
+    });
+  }
+  return { moves, newBoard };
+}
+
+function startCompaction() {
+  const { moves, newBoard } = computeCompactMoves();
+  if (!moves.length) {
+    finishLock();
+    return;
+  }
+  moves.forEach(m => { board[m.from][m.col] = 0; });
+  fallAnimation = { moves, newBoard, start: performance.now() };
+  animating = true;
+}
+
 function clearLines() {
   let cleared = 0;
   for (let r = ROWS - 1; r >= 0; r--) {
@@ -158,10 +237,27 @@ function softDrop() {
   }
 }
 
-function lockPiece() {
-  merge();
+function finishLock() {
   clearLines();
   spawn();
+}
+
+function lockPiece() {
+  if (current.type === BOMB_TYPE) {
+    explode(current.x, current.y);
+    finishLock();
+  } else if (current.type === LIGHTNING_TYPE) {
+    strikeRow(current.y);
+    finishLock();
+  } else if (current.type === GRAVITY_TYPE) {
+    startCompaction();
+  } else if (current.type === FREEZE_TYPE) {
+    freezeUntil = performance.now() + FREEZE_DURATION;
+    finishLock();
+  } else {
+    merge();
+    finishLock();
+  }
 }
 
 function spawn() {
@@ -183,11 +279,66 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
   const color = COLORS[colorIndex];
   context.globalAlpha = alpha ?? 1;
-  context.fillStyle = color;
-  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-  // highlight
-  context.fillStyle = 'rgba(255,255,255,0.12)';
-  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  if (colorIndex === BOMB_TYPE) {
+    const cx = x * size + size / 2;
+    const cy = y * size + size / 2;
+    context.fillStyle = color;
+    context.beginPath();
+    context.arc(cx, cy, size / 2 - 2, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = 'rgba(255,255,255,0.7)';
+    context.beginPath();
+    context.arc(cx, cy, size / 8, 0, Math.PI * 2);
+    context.fill();
+  } else if (colorIndex === LIGHTNING_TYPE) {
+    const bx = x * size;
+    const by = y * size;
+    const pts = [
+      [0.58, 0.02], [0.22, 0.56], [0.46, 0.56],
+      [0.30, 0.98], [0.82, 0.40], [0.52, 0.40],
+    ];
+    context.fillStyle = color;
+    context.beginPath();
+    pts.forEach(([px, py], i) => {
+      const px2 = bx + px * size;
+      const py2 = by + py * size;
+      if (i === 0) context.moveTo(px2, py2); else context.lineTo(px2, py2);
+    });
+    context.closePath();
+    context.fill();
+  } else if (colorIndex === GRAVITY_TYPE) {
+    const bx = x * size;
+    const by = y * size;
+    context.fillStyle = color;
+    // stem
+    context.fillRect(bx + size * 0.4, by + size * 0.12, size * 0.2, size * 0.4);
+    // arrowhead
+    context.beginPath();
+    context.moveTo(bx + size * 0.2, by + size * 0.5);
+    context.lineTo(bx + size * 0.8, by + size * 0.5);
+    context.lineTo(bx + size * 0.5, by + size * 0.85);
+    context.closePath();
+    context.fill();
+  } else if (colorIndex === FREEZE_TYPE) {
+    const cx = x * size + size / 2;
+    const cy = y * size + size / 2;
+    const r = size / 2 - 4;
+    context.strokeStyle = color;
+    context.lineWidth = 2;
+    for (let i = 0; i < 3; i++) {
+      const angle = (Math.PI / 3) * i;
+      context.beginPath();
+      context.moveTo(cx - Math.cos(angle) * r, cy - Math.sin(angle) * r);
+      context.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
+      context.stroke();
+    }
+  } else {
+    context.fillStyle = color;
+    context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+    // highlight
+    context.fillStyle = 'rgba(255,255,255,0.12)';
+    context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+  }
   context.globalAlpha = 1;
 }
 
@@ -218,17 +369,58 @@ function draw() {
     for (let c = 0; c < COLS; c++)
       drawBlock(ctx, c, r, board[r][c], BLOCK);
 
-  // ghost
-  const gy = ghostY();
-  for (let r = 0; r < current.shape.length; r++)
-    for (let c = 0; c < current.shape[r].length; c++)
-      if (current.shape[r][c])
-        drawBlock(ctx, current.x + c, gy + r, current.shape[r][c], BLOCK, 0.2);
+  if (animating) {
+    // falling blocks settling into place
+    const t = Math.min(1, (performance.now() - fallAnimation.start) / FALL_DURATION);
+    const eased = t * t;
+    for (const m of fallAnimation.moves) {
+      const y = m.from + (m.to - m.from) * eased;
+      drawBlock(ctx, m.col, y, m.color, BLOCK);
+    }
+  } else {
+    // ghost
+    const gy = ghostY();
+    for (let r = 0; r < current.shape.length; r++)
+      for (let c = 0; c < current.shape[r].length; c++)
+        if (current.shape[r][c])
+          drawBlock(ctx, current.x + c, gy + r, current.shape[r][c], BLOCK, 0.2);
 
-  // current piece
-  for (let r = 0; r < current.shape.length; r++)
-    for (let c = 0; c < current.shape[r].length; c++)
-      drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+    // current piece
+    for (let r = 0; r < current.shape.length; r++)
+      for (let c = 0; c < current.shape[r].length; c++)
+        drawBlock(ctx, current.x + c, current.y + r, current.shape[r][c], BLOCK);
+  }
+
+  // freeze tint
+  if (performance.now() < freezeUntil) {
+    ctx.fillStyle = 'rgba(179,229,252,0.12)';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    const secsLeft = Math.ceil((freezeUntil - performance.now()) / 1000);
+    ctx.fillStyle = '#e1f5fe';
+    ctx.font = 'bold 16px sans-serif';
+    ctx.textAlign = 'right';
+    ctx.fillText(`❄ ${secsLeft}s`, canvas.width - 8, 20);
+    ctx.textAlign = 'left';
+  }
+
+  // explosion flash
+  if (explosionFlash) {
+    const elapsed = performance.now() - explosionFlash.start;
+    if (elapsed < 200) {
+      const { cx, cy } = explosionFlash;
+      ctx.globalAlpha = 1 - elapsed / 200;
+      ctx.fillStyle = '#fff59d';
+      for (let r = cy - 1; r <= cy + 1; r++) {
+        for (let c = cx - 1; c <= cx + 1; c++) {
+          if (r < 0 || r >= ROWS || c < 0 || c >= COLS) continue;
+          ctx.fillRect(c * BLOCK, r * BLOCK, BLOCK, BLOCK);
+        }
+      }
+      ctx.globalAlpha = 1;
+    } else {
+      explosionFlash = null;
+    }
+  }
 }
 
 function drawNext() {
@@ -267,13 +459,24 @@ function togglePause() {
 function loop(ts) {
   const dt = ts - lastTime;
   lastTime = ts;
-  dropAccum += dt;
-  if (dropAccum >= dropInterval) {
-    dropAccum = 0;
-    if (!collide(current.shape, current.x, current.y + 1)) {
-      current.y++;
-    } else {
-      lockPiece();
+  if (animating) {
+    if (ts - fallAnimation.start >= FALL_DURATION) {
+      board = fallAnimation.newBoard;
+      fallAnimation = null;
+      animating = false;
+      finishLock();
+    }
+  } else if (ts < freezeUntil) {
+    // frozen: skip automatic drop, but manual controls still work
+  } else {
+    dropAccum += dt;
+    if (dropAccum >= dropInterval) {
+      dropAccum = 0;
+      if (!collide(current.shape, current.x, current.y + 1)) {
+        current.y++;
+      } else {
+        lockPiece();
+      }
     }
   }
   if (gameOver) return;
@@ -290,6 +493,10 @@ function init() {
   gameOver = false;
   dropInterval = 1000;
   dropAccum = 0;
+  explosionFlash = null;
+  fallAnimation = null;
+  animating = false;
+  freezeUntil = 0;
   lastTime = performance.now();
   next = randomPiece();
   spawn();
@@ -301,7 +508,7 @@ function init() {
 
 document.addEventListener('keydown', e => {
   if (e.code === 'KeyP') { togglePause(); return; }
-  if (paused || gameOver) return;
+  if (paused || gameOver || animating) return;
   switch (e.code) {
     case 'ArrowLeft':
       if (!collide(current.shape, current.x - 1, current.y)) current.x--;
