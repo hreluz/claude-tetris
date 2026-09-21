@@ -20,6 +20,8 @@ const COLORS = [
   '#d4e157', // plus pentomino - lime
   '#8d6e63', // U-pentomino - brown
   '#f06292', // Y-pentomino - pink
+  '#ffd700', // reward - gold star
+  '#c62828', // hole ring - danger red
 ];
 
 const PIECES = [
@@ -38,6 +40,8 @@ const PIECES = [
   [[0,12,0],[12,12,12],[0,12,0]],             // plus/X-pentomino
   [[13,0,13],[13,13,13]],                     // U-pentomino
   [[0,14],[14,14],[0,14],[0,14]],             // Y-pentomino
+  [[15]],                                      // reward (1x1)
+  [[16,16,16],[16,0,16],[16,16,16]],          // hole ring (3x3, hollow center)
 ];
 
 const LINE_SCORES = [0, 100, 300, 500, 800];
@@ -52,11 +56,14 @@ const FREEZE_TYPE = 11;
 const FREEZE_CHANCE = 0.03;
 const FREEZE_DURATION = 5000;
 const PLUS_TYPE = 12;
-const PLUS_CHANCE = 0.015;
+const PLUS_CHANCE = 0.0075;
 const U_TYPE = 13;
-const U_CHANCE = 0.015;
+const U_CHANCE = 0.0075;
 const Y_TYPE = 14;
-const Y_CHANCE = 0.015;
+const Y_CHANCE = 0.0075;
+const REWARD_TYPE = 15;
+const HOLE_TYPE = 16;
+const HOLE_CHANCE = 0.015;
 
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
@@ -71,7 +78,7 @@ const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
 
-let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, explosionFlash, fallAnimation, animating, freezeUntil;
+let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, explosionFlash, fallAnimation, animating, freezeUntil, rewardPending;
 
 const THEME_KEY = 'tetris-theme';
 
@@ -116,9 +123,15 @@ function randomPiece() {
     type = U_TYPE;
   } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE + GRAVITY_CHANCE + FREEZE_CHANCE + PLUS_CHANCE + U_CHANCE + Y_CHANCE) {
     type = Y_TYPE;
+  } else if (roll < BOMB_CHANCE + LIGHTNING_CHANCE + GRAVITY_CHANCE + FREEZE_CHANCE + PLUS_CHANCE + U_CHANCE + Y_CHANCE + HOLE_CHANCE) {
+    type = HOLE_TYPE;
   } else {
     type = Math.floor(Math.random() * 7) + 1;
   }
+  return makePiece(type);
+}
+
+function makePiece(type) {
   const shape = PIECES[type].map(row => [...row]);
   return { type, shape, x: Math.floor(COLS / 2) - Math.floor(shape[0].length / 2), y: 0 };
 }
@@ -228,6 +241,7 @@ function clearLines() {
     score += (LINE_SCORES[cleared] || 0) * level;
     level = Math.floor(lines / 10) + 1;
     dropInterval = Math.max(100, 1000 - (level - 1) * 90);
+    if (cleared === 4) rewardPending = true;
     updateHUD();
   }
 }
@@ -280,7 +294,8 @@ function lockPiece() {
 
 function spawn() {
   current = next;
-  next = randomPiece();
+  next = rewardPending ? makePiece(REWARD_TYPE) : randomPiece();
+  rewardPending = false;
   if (collide(current.shape, current.x, current.y)) {
     endGame();
   }
@@ -350,6 +365,23 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
       context.lineTo(cx + Math.cos(angle) * r, cy + Math.sin(angle) * r);
       context.stroke();
     }
+  } else if (colorIndex === REWARD_TYPE) {
+    const cx = x * size + size / 2;
+    const cy = y * size + size / 2;
+    const spikes = 5;
+    const outerR = size / 2 - 2;
+    const innerR = outerR * 0.45;
+    context.fillStyle = color;
+    context.beginPath();
+    for (let i = 0; i < spikes * 2; i++) {
+      const r = i % 2 === 0 ? outerR : innerR;
+      const angle = (Math.PI / spikes) * i - Math.PI / 2;
+      const px = cx + Math.cos(angle) * r;
+      const py = cy + Math.sin(angle) * r;
+      if (i === 0) context.moveTo(px, py); else context.lineTo(px, py);
+    }
+    context.closePath();
+    context.fill();
   } else {
     context.fillStyle = color;
     context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
@@ -515,6 +547,7 @@ function init() {
   fallAnimation = null;
   animating = false;
   freezeUntil = 0;
+  rewardPending = false;
   lastTime = performance.now();
   next = randomPiece();
   spawn();
