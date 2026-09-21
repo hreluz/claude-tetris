@@ -234,3 +234,7 @@ kbd {
 .theme-toggle:hover {
   border-color: var(--title);
 }
+
+.skin-toggle {
+  right: 48px;
+}

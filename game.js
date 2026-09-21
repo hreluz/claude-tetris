@@ -65,6 +65,62 @@ const REWARD_TYPE = 15;
 const HOLE_TYPE = 16;
 const HOLE_CHANCE = 0.015;
 
+const SKIN_KEY = 'tetris-skin';
+let skin = 'retro';
+const SKINS = ['retro', 'neon', 'pastel', 'pixel'];
+const SKIN_LABELS = { retro: '🕹️', neon: '💡', pastel: '🌸', pixel: '🟪' };
+
+const NEON_COLORS = [
+  null,
+  '#00e5ff', // I - cyan
+  '#ffea00', // O - yellow
+  '#e040fb', // T - purple
+  '#00e676', // S - green
+  '#ff1744', // Z - red
+  '#2979ff', // J - blue
+  '#ff9100', // L - orange
+  '#ff3d00', // bomb - deep orange
+  '#ffff00', // lightning - electric yellow
+  '#1de9b6', // gravity - teal
+  '#40c4ff', // freeze - ice blue
+  '#c6ff00', // plus pentomino - lime
+  '#ff6e40', // U-pentomino - brown
+  '#ff4081', // Y-pentomino - pink
+  '#ffd600', // reward - gold star
+  '#ff1744', // hole ring - danger red
+];
+
+const PASTEL_COLORS = [
+  null,
+  '#b2ebf2', // I - cyan
+  '#fff9c4', // O - yellow
+  '#e1bee7', // T - purple
+  '#c8e6c9', // S - green
+  '#ffcdd2', // Z - red
+  '#bbdefb', // J - blue
+  '#ffe0b2', // L - orange
+  '#ffccbc', // bomb - deep orange
+  '#fff59d', // lightning - electric yellow
+  '#b2dfdb', // gravity - teal
+  '#e1f5fe', // freeze - ice blue
+  '#f0f4c3', // plus pentomino - lime
+  '#d7ccc8', // U-pentomino - brown
+  '#f8bbd0', // Y-pentomino - pink
+  '#fff9c4', // reward - gold star
+  '#ef9a9a', // hole ring - danger red
+];
+
+const SKIN_COLOR_TABLES = {
+  retro: COLORS,
+  neon: NEON_COLORS,
+  pastel: PASTEL_COLORS,
+  pixel: COLORS,
+};
+
+function getBlockColor(colorIndex) {
+  return (SKIN_COLOR_TABLES[skin] || COLORS)[colorIndex];
+}
+
 const canvas = document.getElementById('board');
 const ctx = canvas.getContext('2d');
 const nextCanvas = document.getElementById('next-canvas');
@@ -77,6 +133,7 @@ const overlayTitle = document.getElementById('overlay-title');
 const overlayScore = document.getElementById('overlay-score');
 const restartBtn = document.getElementById('restart-btn');
 const themeToggleBtn = document.getElementById('theme-toggle');
+const skinToggleBtn = document.getElementById('skin-toggle');
 
 let board, current, next, score, lines, level, paused, gameOver, lastTime, dropAccum, dropInterval, animId, explosionFlash, fallAnimation, animating, freezeUntil, rewardPending;
 
@@ -100,6 +157,22 @@ function toggleTheme() {
     draw();
     drawNext();
   }
+}
+
+function applySkin(name) {
+  skin = name;
+  localStorage.setItem(SKIN_KEY, name);
+  skinToggleBtn.textContent = SKIN_LABELS[name];
+  if (board) {
+    draw();
+    drawNext();
+  }
+}
+
+function initSkin() {
+  const saved = localStorage.getItem(SKIN_KEY);
+  skin = SKINS.includes(saved) ? saved : 'retro';
+  skinToggleBtn.textContent = SKIN_LABELS[skin];
 }
 
 function createBoard() {
@@ -310,7 +383,7 @@ function updateHUD() {
 
 function drawBlock(context, x, y, colorIndex, size, alpha) {
   if (!colorIndex) return;
-  const color = COLORS[colorIndex];
+  const color = getBlockColor(colorIndex);
   context.globalAlpha = alpha ?? 1;
   if (colorIndex === BOMB_TYPE) {
     const cx = x * size + size / 2;
@@ -383,13 +456,55 @@ function drawBlock(context, x, y, colorIndex, size, alpha) {
     context.closePath();
     context.fill();
   } else {
-    context.fillStyle = color;
-    context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
-    // highlight
-    context.fillStyle = 'rgba(255,255,255,0.12)';
-    context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+    switch (skin) {
+      case 'neon': drawGenericNeon(context, x, y, color, size); break;
+      case 'pastel': drawGenericPastel(context, x, y, color, size); break;
+      case 'pixel': drawGenericPixel(context, x, y, color, size); break;
+      default: drawGenericRetro(context, x, y, color, size);
+    }
   }
   context.globalAlpha = 1;
+}
+
+function drawGenericRetro(context, x, y, color, size) {
+  context.fillStyle = color;
+  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+  context.fillStyle = 'rgba(255,255,255,0.12)';
+  context.fillRect(x * size + 1, y * size + 1, size - 2, 4);
+}
+
+function drawGenericNeon(context, x, y, color, size) {
+  context.shadowColor = color;
+  context.shadowBlur = 12;
+  context.fillStyle = color;
+  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+  context.shadowBlur = 0;
+}
+
+function drawGenericPastel(context, x, y, color, size) {
+  const px = x * size + 1;
+  const py = y * size + 1;
+  const s = size - 2;
+  context.fillStyle = color;
+  context.beginPath();
+  if (typeof context.roundRect === 'function') {
+    context.roundRect(px, py, s, s, 4);
+  } else {
+    context.rect(px, py, s, s);
+  }
+  context.fill();
+  context.strokeStyle = 'rgba(255,255,255,0.4)';
+  context.lineWidth = 1;
+  context.stroke();
+}
+
+function drawGenericPixel(context, x, y, color, size) {
+  context.fillStyle = color;
+  context.fillRect(x * size + 1, y * size + 1, size - 2, size - 2);
+  const half = (size - 2) / 2;
+  context.fillStyle = 'rgba(0,0,0,0.15)';
+  context.fillRect(x * size + 1, y * size + 1, half, half);
+  context.fillRect(x * size + 1 + half, y * size + 1 + half, half, half);
 }
 
 function drawGrid() {
@@ -411,7 +526,12 @@ function drawGrid() {
 }
 
 function draw() {
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  if (skin === 'neon') {
+    ctx.fillStyle = '#000';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+  } else {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
   drawGrid();
 
   // board
@@ -475,7 +595,12 @@ function draw() {
 
 function drawNext() {
   const NB = 30;
-  nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  if (skin === 'neon') {
+    nextCtx.fillStyle = '#000';
+    nextCtx.fillRect(0, 0, nextCanvas.width, nextCanvas.height);
+  } else {
+    nextCtx.clearRect(0, 0, nextCanvas.width, nextCanvas.height);
+  }
   const shape = next.shape;
   const offX = Math.floor((4 - shape[0].length) / 2);
   const offY = Math.floor((4 - shape.length) / 2);
@@ -584,6 +709,11 @@ document.addEventListener('keydown', e => {
 
 restartBtn.addEventListener('click', init);
 themeToggleBtn.addEventListener('click', toggleTheme);
+skinToggleBtn.addEventListener('click', () => {
+  const idx = SKINS.indexOf(skin);
+  applySkin(SKINS[(idx + 1) % SKINS.length]);
+});
 
 initTheme();
+initSkin();
 init();
