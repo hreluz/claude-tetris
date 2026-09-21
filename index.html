@@ -42,13 +42,24 @@
             <li><kbd>P</kbd> pausa</li>
           </ul>
         </div>
+
+        <div class="panel-section">
+          <span class="label">MEJORES PUNTAJES</span>
+          <div id="panel-highscore-list" class="highscore-list"></div>
+          <button id="reset-scores-btn">Reiniciar puntajes</button>
+        </div>
       </aside>
     </div>
 
     <div id="overlay" class="overlay hidden">
-      <div class="overlay-box">
+      <div id="gameover-box" class="overlay-box">
         <p id="overlay-title">GAME OVER</p>
         <p id="overlay-score"></p>
+        <div id="gameover-highscore-list" class="highscore-list"></div>
+        <div id="name-entry" class="name-entry">
+          <input id="name-input" maxlength="8" placeholder="AAA" />
+          <button id="save-score-btn">Guardar</button>
+        </div>
         <button id="restart-btn">Reiniciar</button>
       </div>
     </div>
