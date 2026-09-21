@@ -169,10 +169,6 @@ kbd {
   border-radius: 4px;
 }
 
-.overlay.hidden {
-  display: none;
-}
-
 .overlay-box {
   text-align: center;
   display: flex;
@@ -194,7 +190,7 @@ kbd {
   color: var(--overlay-score);
 }
 
-#restart-btn {
+.btn {
   margin-top: 8px;
   background: var(--btn-bg);
   color: var(--btn-color);
@@ -208,8 +204,42 @@ kbd {
   transition: background 0.15s;
 }
 
-#restart-btn:hover {
+.btn:hover {
   background: var(--btn-hover);
+}
+
+/* ---- Pause menu ---- */
+#pause-title {
+  font-size: 28px;
+  font-weight: 800;
+  letter-spacing: 4px;
+  color: var(--overlay-title);
+}
+
+#pause-controls-panel {
+  margin-top: 4px;
+}
+
+#pause-controls-panel .label {
+  display: block;
+  margin-bottom: 6px;
+}
+
+#start-level-select {
+  margin-top: 4px;
+  background: var(--kbd-bg);
+  border: 1px solid var(--kbd-border);
+  color: var(--text);
+  border-radius: 4px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: inherit;
+  cursor: pointer;
+}
+
+/* Always wins display ties regardless of source order elsewhere in this file. */
+.hidden {
+  display: none !important;
 }
 
 /* ---- Theme toggle ---- */
